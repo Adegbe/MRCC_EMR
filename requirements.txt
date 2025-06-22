@@ -1,5 +1,5 @@
-streamlit
+ydata-profiling
 pandas
 numpy
 openpyxl
-ydata-profiling
+streamlit
