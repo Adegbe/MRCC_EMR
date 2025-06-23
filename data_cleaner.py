@@ -1,12 +1,12 @@
+# data_cleaner.py
 import pandas as pd
 import numpy as np
 import json
 import os
 import zipfile
-import re
 from datetime import datetime
 from ydata_profiling import ProfileReport
-from typing import Union, Dict, List, Optional, Callable
+from typing import List, Callable
 
 class DataCleaner:
     def __init__(self):
@@ -89,36 +89,6 @@ class DataCleaner:
             profile.to_file(report_path)
             self.report_data['report_path'] = report_path
         return self.report_data
-
-    def export_data(self, df: pd.DataFrame, output_path: str, format: str = 'csv', 
-                   include_report: bool = False, zip_output: bool = False) -> Union[str, None]:
-        output_dir = os.path.dirname(output_path)
-        base_name = os.path.splitext(os.path.basename(output_path))[0]
-        os.makedirs(output_dir, exist_ok=True)
-        if format.lower() == 'csv':
-            data_file = os.path.join(output_dir, f"{base_name}_cleaned.csv")
-            df.to_csv(data_file, index=False)
-        elif format.lower() in ('xls', 'xlsx'):
-            data_file = os.path.join(output_dir, f"{base_name}_cleaned.xlsx")
-            df.to_excel(data_file, index=False)
-        else:
-            raise ValueError("Unsupported export format. Use 'csv' or 'excel'.")
-        report_file = None
-        if include_report:
-            report_file = os.path.join(output_dir, f"{base_name}_report.json")
-            with open(report_file, 'w') as f:
-                json.dump(self.report_data, f, indent=2)
-        if zip_output:
-            zip_file = os.path.join(output_dir, f"{base_name}_bundle.zip")
-            with zipfile.ZipFile(zip_file, 'w') as zipf:
-                zipf.write(data_file, os.path.basename(data_file))
-                if report_file:
-                    zipf.write(report_file, os.path.basename(report_file))
-            os.remove(data_file)
-            if report_file:
-                os.remove(report_file)
-            return zip_file
-        return data_file
 
     def set_pii_columns(self, columns: List[str]):
         self.pii_columns = columns
