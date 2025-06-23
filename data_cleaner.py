@@ -1,11 +1,9 @@
-# data_cleaner.py
 import pandas as pd
 import numpy as np
 import json
 import os
 import zipfile
 from datetime import datetime
-from ydata_profiling import ProfileReport
 from typing import List, Callable
 
 class DataCleaner:
@@ -77,17 +75,33 @@ class DataCleaner:
         return validated
 
     def generate_report(self, df: pd.DataFrame, report_path: str = None) -> dict:
-        profile = ProfileReport(df, explorative=True)
+        # Collect basic statistics
         self.report_data['data_types'] = dict(df.dtypes.astype(str))
         self.report_data['missing_values'] = df.isnull().sum().to_dict()
         self.report_data['unique_values'] = df.nunique().to_dict()
+        
+        # Collect numeric statistics
         numeric_cols = df.select_dtypes(include=np.number).columns
         if not numeric_cols.empty:
             self.report_data['numeric_stats'] = df[numeric_cols].describe().to_dict()
+        
+        # Collect categorical statistics
+        categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+        if not categorical_cols.empty:
+            self.report_data['categorical_stats'] = {}
+            for col in categorical_cols:
+                self.report_data['categorical_stats'][col] = {
+                    'top_value': df[col].mode().iloc[0] if not df[col].mode().empty else None,
+                    'freq': df[col].value_counts().iloc[0] if not df[col].empty else 0
+                }
+        
+        # Save report as JSON if path is provided
         if report_path:
             os.makedirs(os.path.dirname(report_path), exist_ok=True)
-            profile.to_file(report_path)
+            with open(report_path, 'w') as f:
+                json.dump(self.report_data, f, indent=2)
             self.report_data['report_path'] = report_path
+            
         return self.report_data
 
     def set_pii_columns(self, columns: List[str]):
