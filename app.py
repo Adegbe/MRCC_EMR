@@ -1,49 +1,76 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from datetime import datetime
-from data_cleaner import DataCleaner  # Assuming your DataCleaner is in data_cleaner.py
-import tempfile
+import os
+from mrcc_emr.data_cleaner import DataCleaner
+from io import BytesIO
 
-st.title("Data Cleaning Dashboard")
-st.write("Upload your dataset for automatic cleaning and profiling")
+# --- App Title ---
+st.set_page_config(page_title="MRCC EMR Preprocessing Tool", layout="wide")
+st.title("🧹 MRCC EMR Preprocessing Tool")
 
-uploaded_file = st.file_uploader("Choose a file", type=["csv", "xlsx", "xls", "json"])
+# --- Sidebar Options ---
+st.sidebar.header("Preprocessing Options")
+normalize_cols = st.sidebar.checkbox("Normalize Column Names", value=True)
+standardize_gender = st.sidebar.checkbox("Standardize Gender Field", value=True)
+handle_missing = st.sidebar.checkbox("Handle Missing Values", value=True)
+remove_duplicates = st.sidebar.checkbox("Detect and Remove Duplicates", value=True)
+mask_pii = st.sidebar.checkbox("Mask PII (Personally Identifiable Information)", value=False)
+correct_invalid = st.sidebar.checkbox("Correct Invalid Entries", value=True)
+validate_types = st.sidebar.checkbox("Validate Data Types", value=True)
 
+# --- File Upload ---
+uploaded_file = st.file_uploader("Upload CSV, Excel, or JSON file", type=["csv", "xls", "xlsx", "json"])
+
+# --- PII + Duplicate columns ---
+pii_columns = st.text_input("Columns to mask as PII (comma-separated)", value="name,email,phone")
+dup_columns = st.text_input("Columns to detect duplicates by (comma-separated)", value="id")
+
+# --- Notes Section ---
+st.markdown("""
+#### ℹ️ Notes:
+This tool is designed for internal use only. Ensure all data handling complies with privacy regulations.
+""")
+
+# --- Main Logic ---
 if uploaded_file:
-    # Save to temp file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name) as tmp_file:
-        tmp_file.write(uploaded_file.getvalue())
-        file_path = tmp_file.name
-    
     cleaner = DataCleaner()
-    
-    try:
-        # Load file
-        df = cleaner.load_file(file_path)
-        
-        # Set PII and duplicate columns (customize as needed)
-        cleaner.set_pii_columns([col for col in df.columns if "name" in col.lower() or "email" in col.lower()])
-        cleaner.set_duplicate_key_columns(["Patient ID", "Record ID"])
-        
-        # Clean data
-        with st.spinner("Cleaning data..."):
-            cleaned_df = cleaner.clean_data(df)
-        
-        # Show results
-        st.success(f"Data cleaned successfully! Original: {df.shape[0]} rows, {df.shape[1]} columns → Cleaned: {cleaned_df.shape[0]} rows, {cleaned_df.shape[1]} columns")
-        
-        tab1, tab2 = st.tabs(["Cleaned Data", "Profiling Report"])
-        
-        with tab1:
-            st.dataframe(cleaned_df)
-            
-        with tab2:
-            with st.spinner("Generating report..."):
-                report_path = "profile_report.html"
-                cleaner.generate_report(cleaned_df, report_path)
-            
-            st.components.v1.html(open(report_path, "r").read(), height=1000, scrolling=True)
-    
-    except Exception as e:
-        st.error(f"Error processing file: {str(e)}")
+    ext = os.path.splitext(uploaded_file.name)[1].lower()
+    temp_path = f"temp_uploaded{ext}"
+    with open(temp_path, 'wb') as f:
+        f.write(uploaded_file.getvalue())
+
+    df = cleaner.load_file(temp_path)
+
+    # Configure options
+    cleaner.set_pii_columns([col.strip() for col in pii_columns.split(",")])
+    cleaner.set_duplicate_key_columns([col.strip() for col in dup_columns.split(",")])
+
+    # Apply steps based on UI toggles
+    if normalize_cols:
+        df = cleaner._normalize_column_names(df)
+    if standardize_gender:
+        df = cleaner._clean_string_data(df)
+    if handle_missing:
+        df = cleaner._handle_missing_data(df)
+    if correct_invalid:
+        df = cleaner._correct_wrong_entries(df)
+    if remove_duplicates:
+        df = cleaner._handle_duplicates(df)
+    if mask_pii:
+        df = cleaner._mask_pii(df)
+
+    st.success("✅ Data processing complete")
+    st.dataframe(df.head(50))
+
+    # Download cleaned file
+    csv_buffer = BytesIO()
+    df.to_csv(csv_buffer, index=False)
+    st.download_button("📥 Download Cleaned CSV", csv_buffer.getvalue(),
+                       file_name="cleaned_data.csv", mime="text/csv")
+
+    # Optionally render profiling report
+    if st.checkbox("Generate and show data profiling report"):
+        report_dict = cleaner.generate_report(df)
+        st.json(report_dict)
+else:
+    st.info("Upload a file to begin preprocessing.")
